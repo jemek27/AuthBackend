@@ -1,5 +1,6 @@
 package com.polsl.tab.zoobackend.controller;
 
+import com.polsl.tab.zoobackend.dto.authentication.PasswordChangeRequest;
 import com.polsl.tab.zoobackend.dto.user.UserProfileDTO;
 import com.polsl.tab.zoobackend.dto.user.UserUpdateRequest;
 import com.polsl.tab.zoobackend.mapper.UserMapper;
@@ -9,7 +10,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -34,11 +34,11 @@ public class UserController {
         User user = userService.getUserByUsername(username);
 
         if (user == null) {
-            logger.error("User is null: " + user);
+            logger.error("getCurrentUserProfile: User is null");
             return ResponseEntity.status(404).body(null);
         }
 
-        return ResponseEntity.ok(userMapper.toDto(user));
+        return ResponseEntity.ok(userMapper.toProfileDto(user));
     }
 
     @PutMapping("/me")
@@ -50,11 +50,27 @@ public class UserController {
         Long id = userDetails.getId();
 
         if (id == null) {
-            logger.error("Id is null: " + id);
+            logger.error("Id is null");
             return ResponseEntity.status(401).build();
         }
 
         User updatedClient = userService.updateUser(id, updateRequest);
-        return ResponseEntity.ok(userMapper.toDto(updatedClient));
+        return ResponseEntity.ok(userMapper.toProfileDto(updatedClient));
+    }
+
+    @PutMapping("/change-password")
+    public ResponseEntity<Void> changePassword(Authentication authentication,
+                                               @Valid @RequestBody PasswordChangeRequest request) {
+        if (authentication == null) { return ResponseEntity.status(401).build(); }
+
+        User userDetails = (User) authentication.getPrincipal();
+
+        if (userDetails == null) {
+            logger.error("changePassword: User is null");
+            return ResponseEntity.status(401).build();
+        }
+
+        userService.changePassword(userDetails.getUsername(), request.getOldPassword(), request.getNewPassword());
+        return ResponseEntity.ok().build();
     }
 }

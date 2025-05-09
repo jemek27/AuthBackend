@@ -2,28 +2,31 @@ package com.polsl.tab.zoobackend.service;
 
 import com.polsl.tab.zoobackend.dto.user.UserProfileDTO;
 import com.polsl.tab.zoobackend.dto.user.UserUpdateRequest;
+import com.polsl.tab.zoobackend.exception.BadRequestException;
 import com.polsl.tab.zoobackend.exception.ResourceNotFoundException;
 import com.polsl.tab.zoobackend.model.User;
 import com.polsl.tab.zoobackend.model.Role;
-import com.polsl.tab.zoobackend.dto.user.UserSummaryDTO;
 import com.polsl.tab.zoobackend.repository.UserRepository;
-import jakarta.validation.constraints.Email;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
 
-import java.time.LocalDate;
+
 import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
@@ -36,13 +39,39 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
 
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
+
+    public Page<User> getAllUsers(Pageable pageable) {
+        return userRepository.findAll(pageable);
+    }
+
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Client with ID " + id + " not found"));
     }
 
-    public List<User> getAllUsers() {
-        return userRepository.findAll();
+    public List<User> searchUsers(String username, String email, String firstName, String lastName) {
+        return userRepository.findAll((root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (username != null) predicates.add(cb.equal(root.get("username"), username));
+            if (email != null) predicates.add(cb.equal(root.get("email"), email));
+            if (firstName != null) predicates.add(cb.like(cb.lower(root.get("firstName")), "%" + firstName.toLowerCase() + "%"));
+            if (lastName != null) predicates.add(cb.like(cb.lower(root.get("lastName")), "%" + lastName.toLowerCase() + "%"));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        });
+    }
+
+    public Page<User> searchUsers(String username, String email, String firstName, String lastName, Pageable pageable) {
+        return userRepository.findAll((root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (username != null) predicates.add(cb.equal(root.get("username"), username));
+            if (email != null) predicates.add(cb.equal(root.get("email"), email));
+            if (firstName != null) predicates.add(cb.like(cb.lower(root.get("firstName")), "%" + firstName.toLowerCase() + "%"));
+            if (lastName != null) predicates.add(cb.like(cb.lower(root.get("lastName")), "%" + lastName.toLowerCase() + "%"));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        }, pageable);
     }
 
     public boolean userExists(String username) {
@@ -102,6 +131,18 @@ public class CustomUserDetailsService implements UserDetailsService {
             }
             user.setEmail(email);
         }
+    }
+
+    public void changePassword(String username, String oldPassword, String newPassword) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new BadRequestException("Old password is incorrect.");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 }
 
